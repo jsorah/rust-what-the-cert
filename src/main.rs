@@ -5,31 +5,36 @@ use openssl::{
 };
 use std::net::TcpStream;
 
+const LABEL_WIDTH: usize = 20;
+
 fn dump_cert(cert: &openssl::x509::X509Ref) {
     // TODO - need to make these a bit better
-    println!("{:20}{:?}", "Issuer:", cert.issuer_name());
-    println!("{:20}{:?}", "Subject:", cert.subject_name());
+    println!("{:<LABEL_WIDTH$}{:?}", "Issuer:", cert.issuer_name());
+    println!("{:<LABEL_WIDTH$}{:?}", "Subject:", cert.subject_name());
 
     if let Ok(serial) = cert.serial_number().to_bn().and_then(|bn| bn.to_hex_str()) {
-        println!("{:20}{}", "Serial:", serial);
+        println!("{:<LABEL_WIDTH$}{}", "Serial:", serial);
     }
 
-    println!("{:20}{}", "Not Before:", cert.not_before().to_string());
-    println!("{:20}{}", "Not After:", cert.not_after().to_string());
+    println!("{:<LABEL_WIDTH$}{}", "Not Before:", cert.not_before());
+    println!("{:<LABEL_WIDTH$}{}", "Not After:", cert.not_after());
 
     // calculate cert lifetime left.
     let now = Asn1Time::days_from_now(0).expect("Couldn't get now.");
 
-    let time_difference = now.diff(&cert.not_after()).expect("Time diff failed!");
+    match now.diff(&cert.not_after()) {
+        Ok(time_difference) => {
+            let hours = time_difference.secs / 3600;
+            let minutes = (time_difference.secs % 3600) / 60;
+            let seconds = time_difference.secs % 60;
 
-    let hours = time_difference.secs / 3600;
-    let minutes = (time_difference.secs % 3600) / 60;
-    let seconds = time_difference.secs % 60;
-
-    println!(
-        "{:20}{}d {}h {}m {}s",
-        "Expires in:", time_difference.days, hours, minutes, seconds
-    );
+            println!(
+                "{:20}{}d {}h {}m {}s",
+                "Expires in:", time_difference.days, hours, minutes, seconds
+            );
+        }
+        Err(err) => println!("Expires in: Could not be calculated due to {:?}", err),
+    }
 }
 
 #[derive(Parser, Debug)]
@@ -55,7 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let host = args.host;
     let port = args.port;
-    let sni_value = args.sni_value.unwrap_or(host.clone());
+    let sni_value = args.sni_value.unwrap_or_else(|| host.clone());
     let addr = format!("{}:{}", host, port);
 
     println!("Connecting to {} with SNI value of {}", addr, sni_value);
@@ -67,24 +72,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let stream = TcpStream::connect(&addr)?;
     let ssl_stream = connector.connect(&sni_value, stream)?;
 
-    println!(
-        "Negotiated Cipher: {}",
-        ssl_stream
-            .ssl()
-            .current_cipher()
-            .expect("Oh no!")
-            .description()
-    );
-    println!();
-    let chain = ssl_stream.ssl().peer_cert_chain();
+    if let Some(cipher) = ssl_stream.ssl().current_cipher() {
+        println!("Negotiated Cipher: {}", cipher.description());
+    }
 
-    if let Some(chain_stack) = chain {
-        println!("Chained Certificates [{}]", chain_stack.len());
-        
+    println!();
+
+    if let Some(cert_chain) = ssl_stream.ssl().peer_cert_chain() {
+        println!("Chained Certificates [{}]", cert_chain.len());
+
         if !args.peer_only {
             println!("-----------------------");
 
-            for cert in chain_stack.iter().rev() {
+            for cert in cert_chain.iter().rev() {
                 dump_cert(cert);
                 println!("\n");
             }
@@ -92,31 +92,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!();
     }
 
-    let cert = ssl_stream.ssl().peer_certificate();
-
     println!("Peer Certificate");
     println!("-----------------------");
 
-    if let Some(cert) = cert {
-        dump_cert(&cert);
+    match ssl_stream.ssl().peer_certificate() {
+        Some(peer_cert) => {
+            dump_cert(&peer_cert);
 
-        println!();
+            println!();
 
-        match cert.subject_alt_names() {
-            Some(names) => {
-                println!("Subject Alternative Names [{}]", names.len());
-                if args.show_sans {
-                    for x in names {
-                        if let Some(dnsname) = x.dnsname() {
-                            println!("{}", dnsname)
+            match peer_cert.subject_alt_names() {
+                Some(names) => {
+                    println!("Subject Alternative Names [{}]", names.len());
+                    if args.show_sans {
+                        for x in names {
+                            if let Some(dnsname) = x.dnsname() {
+                                println!("{}", dnsname)
+                            }
                         }
                     }
                 }
+                None => println!("Subject Alternative Names [0]"),
             }
-            None => println!("Subject Alternative Names [0]"),
         }
-    } else {
-        println!("No certificate received.");
+        None => println!("No certificate received."),
     }
 
     Ok(())
