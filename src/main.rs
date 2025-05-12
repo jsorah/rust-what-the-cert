@@ -1,16 +1,63 @@
 use clap::Parser;
 use openssl::{
     asn1::Asn1Time,
+    hash::MessageDigest,
     ssl::{SslConnector, SslMethod, SslVerifyMode},
 };
-use std::net::TcpStream;
+use std::{
+    net::{TcpStream, ToSocketAddrs},
+    time::Duration,
+};
 
-const LABEL_WIDTH: usize = 20;
+const LABEL_WIDTH: usize = 15;
+
+fn stringify_entry(entry: &openssl::x509::X509NameRef) -> String {
+    entry
+        .entries()
+        .map(|item| {
+            let name = item.object().nid().short_name().unwrap_or("");
+            let value = item.data().as_utf8().unwrap();
+
+            format!("/{name}={}", value)
+        })
+        .collect::<String>()
+}
+
+fn hexify_fingerprint(digest: &openssl::hash::DigestBytes) -> String {
+    digest
+        .iter()
+        .map(|b| format!("{:02X}", b))
+        .collect::<Vec<_>>()
+        .join(":")
+}
+fn dump_cert_fingerprints(cert: &openssl::x509::X509Ref) {
+    let sha256fingerprint = cert
+        .digest(MessageDigest::sha256())
+        .expect("Couldn't calculate fingerprint");
+
+    let md5sumfingerprint = cert
+        .digest(MessageDigest::md5())
+        .expect("Couldn't calculate fingerprint");
+
+    let hex = hexify_fingerprint(&sha256fingerprint);
+
+    println!("{:<LABEL_WIDTH$}", "Fingerprints");
+    println!("{:>LABEL_WIDTH$}{}", "SHA256:  ", hex);
+    println!("{:>LABEL_WIDTH$}{}", "MD5SUM:  ", hexify_fingerprint(&md5sumfingerprint));
+}
 
 fn dump_cert(cert: &openssl::x509::X509Ref) {
     // TODO - need to make these a bit better
-    println!("{:<LABEL_WIDTH$}{:?}", "Issuer:", cert.issuer_name());
-    println!("{:<LABEL_WIDTH$}{:?}", "Subject:", cert.subject_name());
+    println!(
+        "{:<LABEL_WIDTH$}{}",
+        "Issuer:",
+        stringify_entry(cert.issuer_name())
+    );
+    println!(
+        "{:<LABEL_WIDTH$}{}",
+        "Subject:",
+        stringify_entry(cert.subject_name())
+    );
 
     if let Ok(serial) = cert.serial_number().to_bn().and_then(|bn| bn.to_hex_str()) {
         println!("{:<LABEL_WIDTH$}{}", "Serial:", serial);
@@ -29,7 +76,7 @@ fn dump_cert(cert: &openssl::x509::X509Ref) {
             let seconds = time_difference.secs % 60;
 
             println!(
-                "{:20}{}d {}h {}m {}s",
+                "{:<LABEL_WIDTH$}{}d {}h {}m {}s",
                 "Expires in:", time_difference.days, hours, minutes, seconds
             );
         }
@@ -54,6 +101,9 @@ struct Args {
 
     #[arg(long)]
     peer_only: bool,
+
+    #[arg(long, default_value_t = 5)]
+    connection_timeout: u64,
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
@@ -69,7 +119,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     connector.set_verify(SslVerifyMode::NONE);
 
     let connector = connector.build();
-    let stream = TcpStream::connect(&addr)?;
+    let addr = Iterator::next(&mut addr
+        .to_socket_addrs()?)
+        .expect("Could not resolve address");
+    let stream = TcpStream::connect_timeout(&addr, Duration::new(args.connection_timeout, 0))?;
     let ssl_stream = connector.connect(&sni_value, stream)?;
 
     if let Some(cipher) = ssl_stream.ssl().current_cipher() {
@@ -86,6 +139,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             for cert in cert_chain.iter().rev() {
                 dump_cert(cert);
+                dump_cert_fingerprints(cert);
                 println!("\n");
             }
         }
@@ -98,6 +152,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match ssl_stream.ssl().peer_certificate() {
         Some(peer_cert) => {
             dump_cert(&peer_cert);
+            dump_cert_fingerprints(&peer_cert);
 
             println!();
 
@@ -105,6 +160,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Some(names) => {
                     println!("Subject Alternative Names [{}]", names.len());
                     if args.show_sans {
+                        println!("-------------------");
                         for x in names {
                             if let Some(dnsname) = x.dnsname() {
                                 println!("{}", dnsname)
