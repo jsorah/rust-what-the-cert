@@ -16,7 +16,11 @@ fn stringify_entry(entry: &openssl::x509::X509NameRef) -> String {
         .entries()
         .map(|item| {
             let name = item.object().nid().short_name().unwrap_or("");
-            let value = item.data().as_utf8().unwrap();
+            let value: String = item
+                .data()
+                .as_utf8()
+                .map(|s| s.to_string())
+                .unwrap_or_default();
 
             format!("/{name}={}", value)
         })
@@ -43,25 +47,24 @@ fn dump_cert_fingerprints(cert: &openssl::x509::X509Ref) {
 
     println!("{:<LABEL_WIDTH$}", "Fingerprints");
     println!("{:>LABEL_WIDTH$}{}", "SHA256:  ", hex);
-    println!("{:>LABEL_WIDTH$}{}", "MD5SUM:  ", hexify_fingerprint(&md5sumfingerprint));
+    println!(
+        "{:>LABEL_WIDTH$}{}",
+        "MD5SUM:  ",
+        hexify_fingerprint(&md5sumfingerprint)
+    );
 }
 
 fn dump_cert(cert: &openssl::x509::X509Ref) {
-    // TODO - need to make these a bit better
-    println!(
-        "{:<LABEL_WIDTH$}{}",
-        "Issuer:",
-        stringify_entry(cert.issuer_name())
-    );
-    println!(
-        "{:<LABEL_WIDTH$}{}",
-        "Subject:",
-        stringify_entry(cert.subject_name())
-    );
+    let certificate_info = CertificateInfo::new(cert);
 
-    if let Ok(serial) = cert.serial_number().to_bn().and_then(|bn| bn.to_hex_str()) {
-        println!("{:<LABEL_WIDTH$}{}", "Serial:", serial);
-    }
+    // TODO - need to make these a bit better
+    println!("{:<LABEL_WIDTH$}{}", "Issuer:", certificate_info.issuer);
+    println!("{:<LABEL_WIDTH$}{}", "Subject:", certificate_info.subject);
+
+    println!(
+        "{:<LABEL_WIDTH$}{}",
+        "Serial:", certificate_info.serial_number
+    );
 
     println!("{:<LABEL_WIDTH$}{}", "Not Before:", cert.not_before());
     println!("{:<LABEL_WIDTH$}{}", "Not After:", cert.not_after());
@@ -81,6 +84,30 @@ fn dump_cert(cert: &openssl::x509::X509Ref) {
             );
         }
         Err(err) => println!("Expires in: Could not be calculated due to {:?}", err),
+    }
+}
+
+struct CertificateInfo {
+    serial_number: String,
+    issuer: String,
+    subject: String,
+    // not_before: DateTime<Utc>,
+    // not_after: DateTime<Utc>,
+}
+
+impl CertificateInfo {
+    pub fn new(cert: &openssl::x509::X509Ref) -> Self {
+        CertificateInfo {
+            serial_number: cert
+                .serial_number()
+                .to_bn()
+                .and_then(|bn| bn.to_hex_str())
+                .unwrap()
+                .to_string(),
+            issuer: stringify_entry(cert.issuer_name()),
+            subject: stringify_entry(cert.subject_name()),
+            // not_before: cert.not_before().to_datetime()
+        }
     }
 }
 
@@ -105,6 +132,7 @@ struct Args {
     #[arg(long, default_value_t = 5)]
     connection_timeout: u64,
 }
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
@@ -119,9 +147,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     connector.set_verify(SslVerifyMode::NONE);
 
     let connector = connector.build();
-    let addr = Iterator::next(&mut addr
-        .to_socket_addrs()?)
-        .expect("Could not resolve address");
+    let addr = Iterator::next(&mut addr.to_socket_addrs()?).expect("Could not resolve address");
     let stream = TcpStream::connect_timeout(&addr, Duration::new(args.connection_timeout, 0))?;
     let ssl_stream = connector.connect(&sni_value, stream)?;
 
