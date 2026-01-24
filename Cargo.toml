@@ -1,8 +1,9 @@
 [package]
 name = "what-the-cert"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 
 [dependencies]
+chrono = "0.4.43"
 clap = { version = "4.5.37", features = ["derive"] }
 openssl = "0.10.72"
