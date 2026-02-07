@@ -30,6 +30,9 @@ struct Args {
 
     #[arg(long, default_value_t = 5)]
     connection_timeout: u64,
+
+    #[arg(long)]
+    insecure: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -43,7 +46,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Connecting to {} with SNI value of {}", addr, sni_value);
 
     let mut connector = SslConnector::builder(SslMethod::tls())?;
-    connector.set_verify(SslVerifyMode::NONE);
+
+    if args.insecure {
+        connector.set_verify(SslVerifyMode::NONE);
+        println!("Verification Disabled!");
+    } else {
+        connector.set_verify(SslVerifyMode::PEER);
+        println!("Peer Verification");
+    }
 
     let connector = connector.build();
     let addr = Iterator::next(&mut addr.to_socket_addrs()?).expect("Could not resolve address");
