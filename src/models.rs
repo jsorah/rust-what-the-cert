@@ -67,8 +67,18 @@ mod tests {
         builder.set_issuer_name(&name).unwrap();
         builder.set_pubkey(&pkey).unwrap();
 
-        let not_before = Asn1Time::from_unix(Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap().timestamp()).unwrap();
-        let not_after = Asn1Time::from_unix(Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap().timestamp()).unwrap();
+        let not_before = Asn1Time::from_unix(
+            Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+                .unwrap()
+                .timestamp(),
+        )
+        .unwrap();
+        let not_after = Asn1Time::from_unix(
+            Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0)
+                .unwrap()
+                .timestamp(),
+        )
+        .unwrap();
         builder.set_not_before(&not_before).unwrap();
         builder.set_not_after(&not_after).unwrap();
 

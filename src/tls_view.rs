@@ -77,8 +77,6 @@ impl TlsSessionView for OpenSslSession<'_> {
     }
 
     fn peer_certificate(&self) -> Option<Self::Cert> {
-        self.ssl
-            .peer_certificate()
-            .map(OpenSslCert::from_x509)
+        self.ssl.peer_certificate().map(OpenSslCert::from_x509)
     }
 }

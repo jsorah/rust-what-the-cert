@@ -50,8 +50,14 @@ impl CliRender {
     fn format_cert_fingerprints(cert: &CertificateInfo) -> String {
         let mut out = String::new();
         out.push_str(&format!("{:<LABEL_WIDTH$}\n", "Fingerprints"));
-        out.push_str(&format!("{:>LABEL_WIDTH$}{}\n", "SHA256:  ", cert.fingerprint_sha256));
-        out.push_str(&format!("{:>LABEL_WIDTH$}{}\n", "MD5SUM:  ", cert.fingerprint_md5));
+        out.push_str(&format!(
+            "{:>LABEL_WIDTH$}{}\n",
+            "SHA256:  ", cert.fingerprint_sha256
+        ));
+        out.push_str(&format!(
+            "{:>LABEL_WIDTH$}{}\n",
+            "MD5SUM:  ", cert.fingerprint_md5
+        ));
         out
     }
 
@@ -89,14 +95,22 @@ impl CliRender {
         out.push_str(&format!("{:<LABEL_WIDTH$}{}\n", "Age:", dhms(age)));
 
         let time_difference = certificate_info.not_after - now;
-        out.push_str(&format!("{:<LABEL_WIDTH$}{}\n", "Expires in:", dhms(time_difference)));
+        out.push_str(&format!(
+            "{:<LABEL_WIDTH$}{}\n",
+            "Expires in:",
+            dhms(time_difference)
+        ));
 
         out.push_str(&Self::format_cert_fingerprints(certificate_info));
 
         out
     }
 
-    fn render_to_string<S: TlsSessionView>(session: &S, opts: RenderOpts, now: DateTime<Utc>) -> String {
+    fn render_to_string<S: TlsSessionView>(
+        session: &S,
+        opts: RenderOpts,
+        now: DateTime<Utc>,
+    ) -> String {
         let mut out = String::new();
 
         if let Some(cipher) = session.cipher_description() {
