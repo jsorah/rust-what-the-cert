@@ -1,7 +1,7 @@
 use chrono::{DateTime, Local, Utc};
 
 use crate::models::CertificateInfo;
-use crate::tls_view::{CertView, OpenSslSession, TlsSessionView};
+use crate::tls_view::{CertView, RustlsSessionView, TlsSessionView};
 
 const LABEL_WIDTH: usize = 15;
 const DAY_IN_SECONDS: i64 = 86_400;
@@ -10,6 +10,7 @@ const HOUR_IN_SECONDS: i64 = 3_600;
 #[derive(Clone, Copy)]
 pub struct RenderOpts {
     pub show_sans: bool,
+    pub show_md5: bool,
     pub peer_only: bool,
 }
 
@@ -47,21 +48,26 @@ impl CliRender {
         format!("{}\n", "-".repeat(width))
     }
 
-    fn format_cert_fingerprints(cert: &CertificateInfo) -> String {
+    fn format_cert_fingerprints(cert: &CertificateInfo, show_md5: bool) -> String {
         let mut out = String::new();
         out.push_str(&format!("{:<LABEL_WIDTH$}\n", "Fingerprints"));
         out.push_str(&format!(
             "{:>LABEL_WIDTH$}{}\n",
             "SHA256:  ", cert.fingerprint_sha256
         ));
-        out.push_str(&format!(
-            "{:>LABEL_WIDTH$}{}\n",
-            "MD5SUM:  ", cert.fingerprint_md5
-        ));
+        if show_md5 {
+            if let Some(md5) = cert.fingerprint_md5.as_deref() {
+                out.push_str(&format!("{:>LABEL_WIDTH$}{}\n", "MD5SUM:  ", md5));
+            }
+        }
         out
     }
 
-    fn format_cert(certificate_info: &CertificateInfo, now: DateTime<Utc>) -> String {
+    fn format_cert(
+        certificate_info: &CertificateInfo,
+        now: DateTime<Utc>,
+        show_md5: bool,
+    ) -> String {
         let mut out = String::new();
 
         out.push_str(&format!(
@@ -101,7 +107,7 @@ impl CliRender {
             dhms(time_difference)
         ));
 
-        out.push_str(&Self::format_cert_fingerprints(certificate_info));
+        out.push_str(&Self::format_cert_fingerprints(certificate_info, show_md5));
 
         out
     }
@@ -119,16 +125,20 @@ impl CliRender {
 
         out.push('\n');
 
-        let cert_chain = session.chain();
-        if !cert_chain.is_empty() {
-            out.push_str(&format!("Chained Certificates [{}]\n", cert_chain.len()));
+        let chain_len = session.chain_len();
+        let mut peer_from_chain: Option<S::Cert> = None;
+
+        if chain_len > 0 {
+            out.push_str(&format!("Chained Certificates [{}]\n", chain_len));
 
             if !opts.peer_only {
+                let cert_chain = session.chain();
+                peer_from_chain = cert_chain.first().cloned();
                 out.push_str(&Self::divider(20));
 
                 for cert in cert_chain.iter().rev() {
                     let certificate_info = cert.certificate_info();
-                    out.push_str(&Self::format_cert(&certificate_info, now));
+                    out.push_str(&Self::format_cert(certificate_info, now, opts.show_md5));
                     out.push('\n');
                 }
             }
@@ -138,10 +148,12 @@ impl CliRender {
         out.push_str("Peer Certificate\n");
         out.push_str(&Self::divider(20));
 
-        match session.peer_certificate() {
+        let peer_cert = peer_from_chain.or_else(|| session.peer_certificate());
+
+        match peer_cert {
             Some(peer_cert) => {
                 let certificate_info = peer_cert.certificate_info();
-                out.push_str(&Self::format_cert(&certificate_info, now));
+                out.push_str(&Self::format_cert(certificate_info, now, opts.show_md5));
                 out.push('\n');
 
                 let sans = peer_cert.dns_sans();
@@ -159,8 +171,8 @@ impl CliRender {
         out
     }
 
-    pub fn render(ssl_stream_ssl: &openssl::ssl::SslRef, opts: RenderOpts) {
-        let session = OpenSslSession::new(ssl_stream_ssl);
+    pub fn render(conn: &rustls::ClientConnection, opts: RenderOpts) {
+        let session = RustlsSessionView::new(conn, opts.show_md5);
         print!("{}", Self::render_to_string(&session, opts, Utc::now()));
     }
 }
@@ -178,20 +190,12 @@ mod tests {
     }
 
     impl CertView for FakeCert {
-        fn certificate_info(&self) -> CertificateInfo {
-            CertificateInfo {
-                serial_number: self.info.serial_number.clone(),
-                issuer: self.info.issuer.clone(),
-                subject: self.info.subject.clone(),
-                not_before: self.info.not_before,
-                not_after: self.info.not_after,
-                fingerprint_md5: self.info.fingerprint_md5.clone(),
-                fingerprint_sha256: self.info.fingerprint_sha256.clone(),
-            }
+        fn certificate_info(&self) -> &CertificateInfo {
+            &self.info
         }
 
-        fn dns_sans(&self) -> Vec<String> {
-            self.sans.clone()
+        fn dns_sans(&self) -> &[String] {
+            &self.sans
         }
     }
 
@@ -206,6 +210,10 @@ mod tests {
 
         fn cipher_description(&self) -> Option<String> {
             self.cipher.clone()
+        }
+
+        fn chain_len(&self) -> usize {
+            self.chain.len()
         }
 
         fn chain(&self) -> Vec<Self::Cert> {
@@ -224,7 +232,7 @@ mod tests {
             subject: "/CN=example.com".to_string(),
             not_before: Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap(),
             not_after: Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
-            fingerprint_md5: "AA:BB".to_string(),
+            fingerprint_md5: Some("AA:BB".to_string()),
             fingerprint_sha256: "11:22".to_string(),
         }
     }
@@ -247,7 +255,7 @@ mod tests {
         let cert = sample_cert_info();
         let now = Utc.with_ymd_and_hms(2025, 1, 2, 1, 1, 5).unwrap();
 
-        let output = CliRender::format_cert(&cert, now);
+        let output = CliRender::format_cert(&cert, now, true);
 
         assert!(output.contains("Issuer:"));
         assert!(output.contains("/CN=Example Issuer"));
@@ -286,6 +294,7 @@ mod tests {
             RenderOpts {
                 peer_only: true,
                 show_sans: false,
+                show_md5: false,
             },
             now,
         );
@@ -297,6 +306,7 @@ mod tests {
             RenderOpts {
                 peer_only: false,
                 show_sans: true,
+                show_md5: false,
             },
             now,
         );
@@ -321,6 +331,7 @@ mod tests {
             RenderOpts {
                 peer_only: false,
                 show_sans: true,
+                show_md5: false,
             },
             now,
         );

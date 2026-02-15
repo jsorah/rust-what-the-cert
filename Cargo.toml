@@ -6,7 +6,14 @@ edition = "2024"
 [dependencies]
 chrono = "0.4.43"
 clap = { version = "4.5.37", features = ["derive"] }
-openssl = { version = "0.10.72", features = ["vendored"] }
+md-5 = "0.10.6"
+rustls = "0.23.35"
+rustls-platform-verifier = "0.5.3"
+sha2 = "0.10.9"
+x509-parser = "0.16.0"
+
+[dev-dependencies]
+rcgen = "0.13.1"
 
 [profile.release]
 codegen-units = 1

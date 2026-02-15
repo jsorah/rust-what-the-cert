@@ -28,15 +28,7 @@ jobs:
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Install OpenSSL build prerequisites (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          choco install nasm strawberryperl -y
       - name: Build release binary
-        env:
-          OPENSSL_NO_VENDOR: "0"
-          OPENSSL_STATIC: "1"
         run: cargo build --release
 
       - name: Package binary (Unix)
