@@ -1,4 +1,4 @@
-use chrono::{Local, Utc};
+use chrono::{DateTime, Local, Utc};
 
 use crate::models::CertificateInfo;
 
@@ -45,47 +45,57 @@ impl CliRender {
         println!("{}", "-".repeat(width));
     }
 
-    fn render_cert_fingerprints(cert: &CertificateInfo) {
-        println!("{:<LABEL_WIDTH$}", "Fingerprints");
-        println!("{:>LABEL_WIDTH$}{}", "SHA256:  ", cert.fingerprint_sha256);
-        println!("{:>LABEL_WIDTH$}{}", "MD5SUM:  ", cert.fingerprint_md5);
+    fn format_cert_fingerprints(cert: &CertificateInfo) -> String {
+        let mut out = String::new();
+        out.push_str(&format!("{:<LABEL_WIDTH$}\n", "Fingerprints"));
+        out.push_str(&format!("{:>LABEL_WIDTH$}{}\n", "SHA256:  ", cert.fingerprint_sha256));
+        out.push_str(&format!("{:>LABEL_WIDTH$}{}\n", "MD5SUM:  ", cert.fingerprint_md5));
+        out
     }
 
-    fn render_cert(certificate_info: &CertificateInfo) {
-        println!("{:<LABEL_WIDTH$}{}", "Issuer:", certificate_info.issuer);
-        println!("{:<LABEL_WIDTH$}{}", "Subject:", certificate_info.subject);
+    fn format_cert(certificate_info: &CertificateInfo, now: DateTime<Utc>) -> String {
+        let mut out = String::new();
 
-        println!(
-            "{:<LABEL_WIDTH$}{}",
+        out.push_str(&format!(
+            "{:<LABEL_WIDTH$}{}\n",
+            "Issuer:", certificate_info.issuer
+        ));
+        out.push_str(&format!(
+            "{:<LABEL_WIDTH$}{}\n",
+            "Subject:", certificate_info.subject
+        ));
+
+        out.push_str(&format!(
+            "{:<LABEL_WIDTH$}{}\n",
             "Serial:", certificate_info.serial_number
-        );
+        ));
 
-        println!(
-            "{:<LABEL_WIDTH$}{} / {}",
+        out.push_str(&format!(
+            "{:<LABEL_WIDTH$}{} / {}\n",
             "Not Before:",
             certificate_info.not_before,
             certificate_info.not_before.with_timezone(&Local)
-        );
-        println!(
-            "{:<LABEL_WIDTH$}{} / {}",
+        ));
+        out.push_str(&format!(
+            "{:<LABEL_WIDTH$}{} / {}\n",
             "Not After:",
             certificate_info.not_after,
             certificate_info.not_after.with_timezone(&Local)
-        );
+        ));
 
-        // calculate age of cert
+        let age = now - certificate_info.not_before;
+        out.push_str(&format!("{:<LABEL_WIDTH$}{}\n", "Age:", dhms(age)));
 
-        let age = Utc::now() - certificate_info.not_before;
+        let time_difference = certificate_info.not_after - now;
+        out.push_str(&format!("{:<LABEL_WIDTH$}{}\n", "Expires in:", dhms(time_difference)));
 
-        println!("{:<LABEL_WIDTH$}{}", "Age:", dhms(age));
+        out.push_str(&Self::format_cert_fingerprints(certificate_info));
 
-        // calculate cert lifetime left.
+        out
+    }
 
-        let time_difference = certificate_info.not_after - Utc::now();
-
-        println!("{:<LABEL_WIDTH$}{}", "Expires in:", dhms(time_difference));
-
-        CliRender::render_cert_fingerprints(certificate_info);
+    fn render_cert(certificate_info: &CertificateInfo) {
+        print!("{}", Self::format_cert(certificate_info, Utc::now()));
     }
 
     pub fn render(ssl_stream_ssl: &openssl::ssl::SslRef, opts: RenderOpts) {
@@ -136,5 +146,60 @@ impl CliRender {
             }
             None => println!("No certificate received."),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{Duration, TimeZone};
+
+    fn sample_cert_info() -> CertificateInfo {
+        CertificateInfo {
+            serial_number: "ABC123".to_string(),
+            issuer: "/CN=Example Issuer".to_string(),
+            subject: "/CN=example.com".to_string(),
+            not_before: Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap(),
+            not_after: Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
+            fingerprint_md5: "AA:BB".to_string(),
+            fingerprint_sha256: "11:22".to_string(),
+        }
+    }
+
+    #[test]
+    fn dhms_formats_expected_units() {
+        assert_eq!(dhms(Duration::seconds(0)), "0s");
+        assert_eq!(dhms(Duration::seconds(59)), "59s");
+        assert_eq!(dhms(Duration::seconds(61)), "1m 1s");
+        assert_eq!(dhms(Duration::seconds(86_400 + 3_600 + 65)), "1d 1h 1m 5s");
+    }
+
+    #[test]
+    fn dhms_clamps_negative_to_zero() {
+        assert_eq!(dhms(Duration::seconds(-5)), "0s");
+    }
+
+    #[test]
+    fn format_cert_includes_expected_labels_and_values() {
+        let cert = sample_cert_info();
+        let now = Utc.with_ymd_and_hms(2025, 1, 2, 1, 1, 5).unwrap();
+
+        let output = CliRender::format_cert(&cert, now);
+
+        assert!(output.contains("Issuer:"));
+        assert!(output.contains("/CN=Example Issuer"));
+        assert!(output.contains("Subject:"));
+        assert!(output.contains("/CN=example.com"));
+        assert!(output.contains("Serial:"));
+        assert!(output.contains("ABC123"));
+        assert!(output.contains("Age:"));
+        assert!(output.contains("1d 1h 1m 5s"));
+        assert!(output.contains("Expires in:"));
+        assert!(output.contains("363d 22h 58m 55s"));
+        assert!(output.contains("Fingerprints"));
+        assert!(output.contains("SHA256:"));
+        assert!(output.contains("11:22"));
+        assert!(output.contains("MD5SUM:"));
+        assert!(output.contains("AA:BB"));
     }
 }
