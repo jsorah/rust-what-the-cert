@@ -1034,11 +1034,12 @@ dependencies = [
 
 [[package]]
 name = "what-the-cert"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "chrono",
  "clap",
  "md-5",
+ "oid-registry",
  "rcgen",
  "rustls",
  "rustls-platform-verifier",

@@ -1,4 +1,7 @@
 use chrono::{DateTime, Utc};
+use oid_registry::{Oid, OidRegistry};
+use std::str::FromStr;
+use std::sync::LazyLock;
 use x509_parser::extensions::GeneralName;
 use x509_parser::parse_x509_certificate;
 use x509_parser::x509::X509Name;
@@ -13,24 +16,58 @@ pub fn hexify_fingerprint(digest: &[u8]) -> String {
         .join(":")
 }
 
-fn oid_short_name(oid: &str) -> String {
+static OID_REGISTRY: LazyLock<OidRegistry<'static>> = LazyLock::new(|| {
+    OidRegistry::default()
+        .with_x500()
+        .with_x509()
+        .with_pkcs9()
+        .with_ms_spc()
+});
+
+fn openssl_short_name(oid: &str) -> Option<&'static str> {
     match oid {
-        "2.5.4.3" => "CN".to_string(),
-        "2.5.4.6" => "C".to_string(),
-        "2.5.4.7" => "L".to_string(),
-        "2.5.4.8" => "ST".to_string(),
-        "2.5.4.10" => "O".to_string(),
-        "2.5.4.11" => "OU".to_string(),
-        "1.2.840.113549.1.9.1" => "emailAddress".to_string(),
-        _ => oid.to_string(),
+        "2.5.4.3" => Some("CN"),
+        "2.5.4.4" => Some("SN"),
+        "2.5.4.5" => Some("serialNumber"),
+        "2.5.4.6" => Some("C"),
+        "2.5.4.7" => Some("L"),
+        "2.5.4.8" => Some("ST"),
+        "2.5.4.9" => Some("street"),
+        "2.5.4.10" => Some("O"),
+        "2.5.4.11" => Some("OU"),
+        "2.5.4.12" => Some("title"),
+        "2.5.4.15" => Some("businessCategory"),
+        "2.5.4.17" => Some("postalCode"),
+        "2.5.4.42" => Some("GN"),
+        "2.5.4.43" => Some("initials"),
+        "2.5.4.46" => Some("dnQualifier"),
+        "2.5.4.97" => Some("organizationIdentifier"),
+        "0.9.2342.19200300.100.1.1" => Some("UID"),
+        "0.9.2342.19200300.100.1.25" => Some("DC"),
+        "1.2.840.113549.1.9.1" => Some("emailAddress"),
+        "1.3.6.1.4.1.311.60.2.1.1" => Some("jurisdictionL"),
+        "1.3.6.1.4.1.311.60.2.1.2" => Some("jurisdictionST"),
+        "1.3.6.1.4.1.311.60.2.1.3" => Some("jurisdictionC"),
+        _ => None,
     }
+}
+
+fn oid_readable_name(oid: &str) -> String {
+    if let Some(name) = openssl_short_name(oid) {
+        return name.to_string();
+    }
+
+    Oid::from_str(oid)
+        .ok()
+        .and_then(|parsed_oid| OID_REGISTRY.get(&parsed_oid).map(|entry| entry.sn().to_string()))
+        .unwrap_or_else(|| oid.to_string())
 }
 
 pub fn stringify_entry(entry: &X509Name<'_>) -> String {
     entry
         .iter_attributes()
         .map(|item| {
-            let name = oid_short_name(&item.attr_type().to_id_string());
+            let name = oid_readable_name(&item.attr_type().to_id_string());
             let value = item.as_str().unwrap_or("");
             format!("/{name}={value}")
         })
@@ -78,4 +115,22 @@ pub fn parse_der_certificate(der: &[u8]) -> Result<ParsedCertificate, String> {
         },
         dns_sans: sans,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::oid_readable_name;
+
+    #[test]
+    fn uses_openssl_short_names_for_common_subject_fields() {
+        assert_eq!(oid_readable_name("2.5.4.3"), "CN");
+        assert_eq!(oid_readable_name("2.5.4.6"), "C");
+        assert_eq!(oid_readable_name("2.5.4.10"), "O");
+        assert_eq!(oid_readable_name("2.5.4.11"), "OU");
+        assert_eq!(oid_readable_name("0.9.2342.19200300.100.1.25"), "DC");
+        assert_eq!(oid_readable_name("1.2.840.113549.1.9.1"), "emailAddress");
+        assert_eq!(oid_readable_name("1.3.6.1.4.1.311.60.2.1.1"), "jurisdictionL");
+        assert_eq!(oid_readable_name("1.3.6.1.4.1.311.60.2.1.2"), "jurisdictionST");
+        assert_eq!(oid_readable_name("1.3.6.1.4.1.311.60.2.1.3"), "jurisdictionC");
+    }
 }

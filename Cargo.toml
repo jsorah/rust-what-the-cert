@@ -1,12 +1,13 @@
 [package]
 name = "what-the-cert"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 
 [dependencies]
 chrono = "0.4.43"
 clap = { version = "4.5.37", features = ["derive"] }
 md-5 = "0.10.6"
+oid-registry = { version = "0.7.1", features = ["x500", "x509", "pkcs9", "ms_spc"] }
 rustls = "0.23.35"
 rustls-platform-verifier = "0.5.3"
 sha2 = "0.10.9"
