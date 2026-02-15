@@ -59,7 +59,11 @@ fn oid_readable_name(oid: &str) -> String {
 
     Oid::from_str(oid)
         .ok()
-        .and_then(|parsed_oid| OID_REGISTRY.get(&parsed_oid).map(|entry| entry.sn().to_string()))
+        .and_then(|parsed_oid| {
+            OID_REGISTRY
+                .get(&parsed_oid)
+                .map(|entry| entry.sn().to_string())
+        })
         .unwrap_or_else(|| oid.to_string())
 }
 
@@ -129,8 +133,17 @@ mod tests {
         assert_eq!(oid_readable_name("2.5.4.11"), "OU");
         assert_eq!(oid_readable_name("0.9.2342.19200300.100.1.25"), "DC");
         assert_eq!(oid_readable_name("1.2.840.113549.1.9.1"), "emailAddress");
-        assert_eq!(oid_readable_name("1.3.6.1.4.1.311.60.2.1.1"), "jurisdictionL");
-        assert_eq!(oid_readable_name("1.3.6.1.4.1.311.60.2.1.2"), "jurisdictionST");
-        assert_eq!(oid_readable_name("1.3.6.1.4.1.311.60.2.1.3"), "jurisdictionC");
+        assert_eq!(
+            oid_readable_name("1.3.6.1.4.1.311.60.2.1.1"),
+            "jurisdictionL"
+        );
+        assert_eq!(
+            oid_readable_name("1.3.6.1.4.1.311.60.2.1.2"),
+            "jurisdictionST"
+        );
+        assert_eq!(
+            oid_readable_name("1.3.6.1.4.1.311.60.2.1.3"),
+            "jurisdictionC"
+        );
     }
 }
