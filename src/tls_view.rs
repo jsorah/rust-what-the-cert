@@ -12,6 +12,7 @@ pub trait TlsSessionView {
     type Cert: CertView + Clone;
 
     fn cipher_description(&self) -> Option<String>;
+    fn protocol_version(&self) -> Option<String>;
     fn chain_len(&self) -> usize;
     fn chain(&self) -> Vec<Self::Cert>;
     fn peer_certificate(&self) -> Option<Self::Cert>;
@@ -70,6 +71,10 @@ impl TlsSessionView for RustlsSessionView<'_> {
         self.conn
             .negotiated_cipher_suite()
             .map(|cipher| format!("{:?}", cipher.suite()))
+    }
+
+    fn protocol_version(&self) -> Option<String> {
+        self.conn.protocol_version().map(|v| format!("{v:?}"))
     }
 
     fn chain_len(&self) -> usize {
