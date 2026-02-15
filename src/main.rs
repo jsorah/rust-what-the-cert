@@ -9,6 +9,7 @@ use std::{
 mod models;
 mod openssl_util;
 mod render;
+mod tls_view;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
