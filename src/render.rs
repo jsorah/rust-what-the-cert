@@ -55,10 +55,8 @@ impl CliRender {
             "{:>LABEL_WIDTH$}{}\n",
             "SHA256:  ", cert.fingerprint_sha256
         ));
-        if show_md5 {
-            if let Some(md5) = cert.fingerprint_md5.as_deref() {
-                out.push_str(&format!("{:>LABEL_WIDTH$}{}\n", "MD5SUM:  ", md5));
-            }
+        if show_md5 && let Some(md5) = cert.fingerprint_md5.as_deref() {
+            out.push_str(&format!("{:>LABEL_WIDTH$}{}\n", "MD5SUM:  ", md5));
         }
         out
     }
