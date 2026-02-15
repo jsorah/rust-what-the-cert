@@ -120,6 +120,9 @@ impl CliRender {
         if let Some(cipher) = session.cipher_description() {
             out.push_str(&format!("Negotiated Cipher: {cipher}\n"));
         }
+        if let Some(protocol) = session.protocol_version() {
+            out.push_str(&format!("Negotiated Protocol: {protocol}\n"));
+        }
 
         out.push('\n');
 
@@ -199,6 +202,7 @@ mod tests {
 
     struct FakeSession {
         cipher: Option<String>,
+        protocol: Option<String>,
         chain: Vec<FakeCert>,
         peer: Option<FakeCert>,
     }
@@ -208,6 +212,10 @@ mod tests {
 
         fn cipher_description(&self) -> Option<String> {
             self.cipher.clone()
+        }
+
+        fn protocol_version(&self) -> Option<String> {
+            self.protocol.clone()
         }
 
         fn chain_len(&self) -> usize {
@@ -281,6 +289,7 @@ mod tests {
 
         let session = FakeSession {
             cipher: Some("TLS_FAKE".to_string()),
+            protocol: Some("TLSv1_3".to_string()),
             chain: vec![cert.clone()],
             peer: Some(cert),
         };
@@ -310,6 +319,7 @@ mod tests {
         );
 
         assert!(shown.contains("Negotiated Cipher: TLS_FAKE"));
+        assert!(shown.contains("Negotiated Protocol: TLSv1_3"));
         assert!(shown.contains("Subject Alternative Names [2]"));
         assert!(shown.contains("example.com"));
         assert!(shown.contains("www.example.com"));
@@ -319,6 +329,7 @@ mod tests {
     fn render_to_string_handles_missing_peer_cert() {
         let session = FakeSession {
             cipher: None,
+            protocol: None,
             chain: Vec::new(),
             peer: None,
         };
