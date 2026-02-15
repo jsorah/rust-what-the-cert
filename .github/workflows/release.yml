@@ -36,7 +36,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          asset_name="what-the-cert-${{ runner.os }}-${{ runner.arch }}"
+          version="${{ github.ref_name }}"
+          asset_name="what-the-cert-${version}-${{ runner.os }}-${{ runner.arch }}"
           cp target/release/what-the-cert "dist/${asset_name}"
           tar -czf "dist/${asset_name}.tar.gz" -C dist "${asset_name}"
           rm "dist/${asset_name}"
@@ -46,7 +47,8 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $assetName = "what-the-cert-${{ runner.os }}-${{ runner.arch }}"
+          $version = "${{ github.ref_name }}"
+          $assetName = "what-the-cert-$version-${{ runner.os }}-${{ runner.arch }}"
           Copy-Item target/release/what-the-cert.exe "dist/$assetName.exe"
           Compress-Archive -Path "dist/$assetName.exe" -DestinationPath "dist/$assetName.zip"
           Remove-Item "dist/$assetName.exe"
