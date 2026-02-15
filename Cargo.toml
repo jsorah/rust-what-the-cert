@@ -7,3 +7,9 @@ edition = "2024"
 chrono = "0.4.43"
 clap = { version = "4.5.37", features = ["derive"] }
 openssl = { version = "0.10.72", features = ["vendored"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+panic = "abort"
+strip = true
