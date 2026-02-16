@@ -18,7 +18,6 @@ mod tls_view;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-barfhaflaflhlahflh
     #[arg(long)]
     host: String,
 

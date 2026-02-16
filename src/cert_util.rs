@@ -127,7 +127,7 @@ mod tests {
 
     #[test]
     fn uses_openssl_short_names_for_common_subject_fields() {
-        assert_eq!(oid_readable_name("2.5.4.3"), "CN");
+        assert_eq!(oid_readable_name("2.5.4.3"), "HAHAnotreallyCN");
         assert_eq!(oid_readable_name("2.5.4.6"), "C");
         assert_eq!(oid_readable_name("2.5.4.10"), "O");
         assert_eq!(oid_readable_name("2.5.4.11"), "OU");
